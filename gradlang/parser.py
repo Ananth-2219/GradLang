@@ -44,7 +44,7 @@ class Parser:
         return functions
 
     def function(self) -> FunctionDef:
-        self.expect("FN")
+        start = self.expect("FN")
         name = self.expect("IDENT").value
         self.expect("(")
         params = []
@@ -60,15 +60,16 @@ class Parser:
 
         body = []
         while self.current.kind == "IDENT":
-            target = self.expect("IDENT").value
+            target_token = self.expect("IDENT")
+            target = target_token.value
             self.expect("=")
-            body.append(Assign(target, self.expression()))
+            body.append(Assign(target, self.expression(), line=target_token.line))
             self.expect("NEWLINE")
-        self.expect("RETURN")
-        body.append(Return(self.expression()))
+        return_token = self.expect("RETURN")
+        body.append(Return(self.expression(), line=return_token.line))
         self.expect("NEWLINE")
         self.expect("DEDENT")
-        return FunctionDef(name, params, body)
+        return FunctionDef(name, params, body, line=start.line)
 
     def expression(self) -> Expr:
         return self.additive()
@@ -78,20 +79,20 @@ class Parser:
         # Updating the left subtree makes equal-precedence operators left-associative.
         while self.current.kind in ("+", "-"):
             operator = self.expect(self.current.kind).value
-            node = BinOp(node, operator, self.multiplicative())
+            node = BinOp(node, operator, self.multiplicative(), line=node.line)
         return node
 
     def multiplicative(self) -> Expr:
         node = self.unary()
         while self.current.kind in ("*", "/"):
             operator = self.expect(self.current.kind).value
-            node = BinOp(node, operator, self.unary())
+            node = BinOp(node, operator, self.unary(), line=node.line)
         return node
 
     def unary(self) -> Expr:
         if self.current.kind == "-":
-            self.expect("-")
-            return UnaryOp("-", self.unary())
+            token = self.expect("-")
+            return UnaryOp("-", self.unary(), line=token.line)
         return self.power()
 
     def power(self) -> Expr:
@@ -99,18 +100,20 @@ class Parser:
         if self.current.kind == "^":
             self.expect("^")
             # Recursion through unary permits 2^-3 and groups 2^3^4 as 2^(3^4).
-            node = BinOp(node, "^", self.unary())
+            node = BinOp(node, "^", self.unary(), line=node.line)
         return node
 
     def primary(self) -> Expr:
         if self.current.kind == "NUMBER":
-            literal = self.expect("NUMBER").value
+            token = self.expect("NUMBER")
+            literal = token.value
             value = float(literal) if any(c in literal for c in ".eE") else int(literal)
-            return Num(value)
+            return Num(value, line=token.line)
         if self.current.kind == "IDENT":
-            name = self.expect("IDENT").value
+            token = self.expect("IDENT")
+            name = token.value
             if self.current.kind != "(":
-                return Var(name)
+                return Var(name, line=token.line)
             self.expect("(")
             arguments = []
             if self.current.kind != ")":
@@ -119,7 +122,7 @@ class Parser:
                     self.expect(",")
                     arguments.append(self.expression())
             self.expect(")")
-            return Call(name, arguments)
+            return Call(name, arguments, line=token.line)
         if self.current.kind == "(":
             self.expect("(")
             node = self.expression()

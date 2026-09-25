@@ -1,10 +1,10 @@
-# GradLang — Phase 1
+# GradLang — Phases 1 and 2
 
 GradLang is a compiler-design lab project for a math-expression DSL. The planned
-compiler will generate gradients through an explicit reverse-mode automatic
-differentiation pass. **Phase 1 implements only grammar, lexing, parsing, and AST
-construction.** It does not evaluate expressions, check types or names, build IR,
-differentiate, or generate code.
+compiler generates gradients through an explicit reverse-mode automatic
+differentiation pass. Phase 1 provides grammar, lexing, parsing, and AST
+construction. Phase 2 adds semantic checks, a shared computation DAG,
+hand-written reverse-mode differentiation, optimization, and scalar Python codegen.
 
 ## Files and execution
 
@@ -14,10 +14,18 @@ GradLang/
 │   ├── __init__.py
 │   ├── lexer.py
 │   ├── parser.py
-│   └── ast_nodes.py
+│   ├── ast_nodes.py
+│   ├── symbol_table.py
+│   ├── semantic_analysis.py
+│   ├── ir_graph.py
+│   ├── autodiff.py
+│   ├── optimizer.py
+│   └── codegen.py
 ├── tests/
 │   ├── demo_phase1.py
-│   └── test_phase1.py
+│   ├── test_phase1.py
+│   ├── demo_phase2.py
+│   └── test_phase2.py
 └── README.md
 ```
 
@@ -25,6 +33,7 @@ Use Python 3.8 or newer. No third-party dependencies are required.
 
 ```sh
 python tests/demo_phase1.py
+python tests/demo_phase2.py
 python -m unittest discover -s tests -v
 ```
 
@@ -141,3 +150,94 @@ unary operators and right-associative powers.
 parameter names and ordered statements. Expressions store child expressions,
 operators, names, or numeric values. Parentheses affect tree shape and therefore
 need no separate AST node. The AST stores syntax only; no backward pass runs.
+
+## Phase 2 pipeline and APIs
+
+The Phase 1 grammar remains unchanged. AST nodes now retain source line numbers;
+these metadata fields do not change structural equality in the Phase 1 tests.
+The restrictions above describe parsing; the additional semantic checks below
+apply when compiling a function through Phase 2.
+
+1. `build_symbol_table(function, parameter_types=None)` in `symbol_table.py`
+   maps names to `Symbol(kind, shape)`. It walks statements in order, rejects
+   duplicate parameters and uses before definition, and infers assignment shapes.
+2. `analyze(function, parameter_types=None)` in `semantic_analysis.py` is the
+   public semantic entrypoint. It shares the symbol-building walk so a later
+   assignment cannot accidentally authorize an earlier reference. Diagnostics
+   include the offending expression and its source line.
+3. `build_graph(function, parameter_types=None, share=True)` lowers checked AST
+   nodes to a DAG. Assignments update the name environment; earlier nodes keep
+   their original inputs. Unary minus lowers to `Sub(Const(0), operand)`.
+   `format_graph([root])` prints nodes in topological order.
+4. `differentiate(graph)` returns a dictionary mapping every original parameter
+   name to its derivative root. Unused parameters receive zero.
+5. `optimize(roots)` returns new roots after constant folding and structural CSE.
+   Passing forward and derivative roots together permits sharing across them.
+6. `generate_code(name, parameters, output, gradients)` returns forward and
+   gradient source strings. `load_functions(name, forward_source, gradient_source)`
+   executes those strings and returns both Python functions. Only execute trusted,
+   compiler-generated code. DSL names that are Python keywords are rejected.
+
+`tests/demo_phase2.py` shows all passes in order and prints the generated code.
+For `x=2, w=0.5, b=1`, the forward result is `1` and the gradient dictionary is
+`{'x': 1, 'w': 4, 'b': 2}`. The demo independently checks `w` and `b` with central
+finite differences using epsilon `1e-6` and absolute tolerance `1e-5`.
+
+### Shapes and supported operations
+
+Parameters default to `Symbol('scalar', ())`. Explicit metadata can be supplied
+as `{'x': Symbol('vector', (3,))}` without adding type syntax to the language.
+Shape inference accepts equal shapes or a scalar broadcast against another shape;
+unequal non-scalar shapes fail. All binary operators are elementwise for this
+shape policy. The current backend rejects vector lowering explicitly; numerical
+execution and differentiation are scalar-only. Function calls remain parseable
+but are rejected by Phase 2 until call semantics and derivative rules are defined.
+
+Scalar execution uses Python numeric behavior. Division requires a nonzero
+denominator. Differentiation assumes real inputs at differentiable points.
+Variable exponents require a positive base: their derivative needs `log(base)`.
+An internal `Log` node therefore extends the derivative IR; it is not a new DSL
+function. Constant powers use the ordinary power rule and avoid logarithms,
+including explicit handling of exponents zero and one. Other powers retain their
+ordinary real-domain restrictions. No domain-proof pass is implemented.
+
+### Reverse-mode accumulation
+
+For each node `v`, its adjoint represents `d(output)/d(v)`. The output adjoint
+starts at one. Reverse topological order visits every consumer before its inputs.
+Each operator rule contributes `upstream * local_derivative` along each input
+edge. If an input already has an adjoint, the pass constructs an `Add` node to
+sum the new contribution with the previous one. It never overwrites a contribution.
+
+For `t=w*x; output=t+t`, the Add contributes one twice to the same `t` node.
+The accumulated adjoint of `t` is two before Mul is processed, so the parameter
+gradients are `2*x` and `2*w`. Repeated edges within one operator, such as `x*x`,
+also contribute separately. This implements the multivariate chain rule.
+
+The dispatch table in `autodiff.py` separates these local rules:
+
+| Operation | Contribution to left input | Contribution to right input |
+|---|---|---|
+| `a+b` | `g` | `g` |
+| `a-b` | `g` | `-g` |
+| `a*b` | `g*b` | `g*a` |
+| `a/b` | `g/b` | `-g*a/(b*b)` |
+| `a^b` | `g*b*a^(b-1)` | `g*a^b*log(a)` for variable exponents |
+
+Here `g` is the accumulated upstream adjoint. Constant inputs do not require
+gradient propagation. The pass constructs expressions rather than evaluating
+derivatives; optimization and code generation consume those expressions later.
+
+### What CSE removes
+
+For `return w*x + w*x`, construction with `share=False` produces five reachable
+nodes: two variables, two Mul nodes, and one Add. CSE identifies both Mul nodes
+by the same operator and canonical inputs. It merges them, producing **four**
+nodes, with both Add inputs pointing to the same Mul.
+
+Normal construction uses structural hashing already and produces four nodes;
+running CSE then leaves four. The demo deliberately disables construction sharing
+to make the reduction visible. Counts include all nodes reachable from the output.
+Operand order matters: `w*x` and `x*w` are not merged by algebraic reasoning.
+Constant folding can expose further duplicates; tests cover this case too.
+Invalid constant operations are retained so optimization preserves runtime errors.
