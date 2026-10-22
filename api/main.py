@@ -86,6 +86,17 @@ class BenchmarkRequest(BaseModel):
 # Serialization Helpers
 # ---------------------------------------------------------------------------
 
+def optimization_metrics(nodes_before: int, nodes_after: int) -> Dict[str, Any]:
+    """Compare node counts within one graph scope, counting shared nodes once."""
+    reduction = nodes_before - nodes_after
+    return {
+        "nodesBefore": nodes_before,
+        "nodesAfter": nodes_after,
+        "nodeReduction": reduction,
+        "percentReduction": round(reduction / nodes_before * 100, 1) if nodes_before else 0.0,
+    }
+
+
 def serialize_token(tok: Token) -> Dict[str, Any]:
     return {
         "kind": tok.kind,
@@ -558,11 +569,12 @@ def compile_code(req: CompileRequest):
         except Exception as e:
             finite_diff_results = {"error": f"Validation failed: {str(e)}"}
 
-    # Optimization metrics
-    node_reduction = result.nodes_before - result.nodes_after
-    pct_reduction = (
-        round((node_reduction / result.nodes_before) * 100, 1)
-        if result.nodes_before > 0 else 0.0
+    # Keep legacy combined metrics while exposing explicit like-for-like scopes.
+    forward_metrics = optimization_metrics(
+        result.forward_nodes_before, result.forward_nodes_after
+    )
+    combined_metrics = optimization_metrics(
+        result.combined_nodes_before, result.combined_nodes_after
     )
 
     return {
@@ -578,10 +590,9 @@ def compile_code(req: CompileRequest):
         "ir": {
             "before": result.ir_before,
             "after": result.ir_after,
-            "nodesBefore": result.nodes_before,
-            "nodesAfter": result.nodes_after,
-            "nodeReduction": node_reduction,
-            "percentReduction": pct_reduction,
+            **combined_metrics,  # Backward compatibility: these have always been combined.
+            "forward": forward_metrics,  # Counts for the forward-only before/after listings.
+            "combined": combined_metrics,  # Union of forward + all derivative graphs.
         },
         "dags": {
             "forwardRaw": fwd_raw_dag,

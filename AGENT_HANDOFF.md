@@ -1,5 +1,32 @@
 # Agent Handoff
 
+## Active Task: IR Optimization Metrics (COMPLETED)
+User requires distinct forward-only and combined forward + gradient comparisons;
+preserve existing API consumers, autodiff/optimizer semantics, results, and prior scrolling fix.
+
+Plan: add regression tests first; expose compiler scope-specific counts without breaking
+CompileResult construction; add `ir.forward` and `ir.combined` API metric groups while
+retaining legacy combined metrics and forward listings; update IrViewer, Overview,
+App badges, and DAG scope labels; run full pytest, build/lint, browser checks; log bug.
+
+Current checkpoint: implemented compiler properties for forward/combined counts,
+API `ir.forward`/`ir.combined` metrics (legacy fields unchanged), scoped IR viewer,
+Overview/App labels, selected-DAG count and clearer shared-node legend.
+Added 14 regression cases; initially 10 failed for missing fields and 4 math checks passed.
+After implementation, full suite: 127 passed + 55 subtests (baseline 113 + 55).
+Build/lint passed with existing warnings. Chrome runtime checks passed for loss,
+identity/no-op, forward constant folding; verified DAG count labels, Overview,
+desktop and narrow layouts. Screenshots inspected. No browser runtime exceptions.
+README documents API scopes and compiler properties. Reviewed additive API fields
+and unchanged optimizer/autodiff semantics. No remaining implementation work.
+Logged: C:/Users/anant/MyObsidianVault/Errors/GradLang-ir-optimization-graph-scope-mismatch.md.
+Exact resume point: task complete; inspect Git diff before any further changes.
+Temporary browser proof: C:/Users/anant/AppData/Local/Temp/gradlang-ir-verify.cjs
+and gradlang-ir-*.png. API restarted with updated code on 127.0.0.1:8001.
+Use existing pytest suite and cached Playwright for Chrome runtime verification.
+
+Prior task below is completed; preserve its changes.
+
 ## Original Task
 Fix scrolling in Autodiff Adjoints' reverse-mode accumulation trace.
 

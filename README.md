@@ -216,6 +216,8 @@ Frozen `Node(op, inputs, value)` objects form an identity-based DAG.  `GraphBuil
 | `ir_after` | `str` | Human-readable forward IR after opt |
 | `nodes_before` | `int` | Reachable nodes (fwd+grad) before opt |
 | `nodes_after` | `int` | Reachable nodes (fwd+grad) after opt |
+| `forward_nodes_before`, `forward_nodes_after` | `int` properties | Reachable forward-only counts matching the displayed IR listings |
+| `combined_nodes_before`, `combined_nodes_after` | `int` properties | Explicit aliases for the legacy combined counts; shared nodes counted once |
 | `forward_source` | `str` | Generated Python forward function |
 | `gradient_source` | `str` | Generated Python gradient function |
 | `output` | `float\|None` | Forward value (None if not executed) |
@@ -336,10 +338,25 @@ GradLang includes a professional, interactive Compiler Visualization Workbench d
 1. **GradLang Code Editor**: Syntax-highlighted code editor with pre-loaded DSL examples and dynamic parameter inputs.
 2. **Interactive DAG Visualization**: Powered by ReactFlow with automatic hierarchical layouts. Highlights shared computation nodes (CSE) across both forward and derivative passes. Supports view filtering for combined, forward-only, and individual parameter gradients.
 3. **Telemetry & Results**: Displays forward output $f(x)$ and reverse-mode analytical gradients $\nabla f$ with microsecond compilation latency metrics.
-4. **Intermediate Representation (IR)**: Side-by-side comparison of 3-address codes before and after optimization with real node reduction counts.
+4. **Intermediate Representation (IR)**: Side-by-side forward IR listings with matching forward-only counts, plus separate combined forward + gradient optimization statistics.
 5. **Autodiff Adjoints Trace**: Step-by-step table tracing reverse-mode adjoint accumulation and rules applied.
 6. **Finite-Difference Validation**: Central finite-difference verification comparing numerical vs analytical gradients with absolute and relative errors.
 7. **Live Test Suite & Micro-Benchmarks**: Programmatic pytest execution and phase-by-phase compiler latency breakdown (Lexer, Parser, Semantic Analysis, IR Graph, Autodiff, Optimizer, Codegen, Evaluation).
+
+### Optimization metric scopes
+
+The `/api/compile` response exposes `ir.forward` and `ir.combined`, each containing
+`nodesBefore`, `nodesAfter`, `nodeReduction`, and `percentReduction` (rounded to one
+decimal place). `ir.before` and `ir.after` remain forward-only listings. For backward
+compatibility, the existing metric fields directly under `ir` retain their combined
+forward + gradient meaning. Combined counts use a single topological traversal across
+all roots, so nodes shared by the forward computation and multiple derivatives are
+counted only once.
+
+For the linear loss example, the forward IR stays at 9 → 9 nodes (0% reduction),
+while the combined graphs improve from 16 → 14 (2 nodes eliminated, 12.5%). This
+reduction occurs in the derivative computations even though the forward listings
+are identical. Counts are calculated from each compiled program.
 
 ### Startup Instructions
 

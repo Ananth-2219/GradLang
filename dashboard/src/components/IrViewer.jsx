@@ -1,5 +1,16 @@
 import React from 'react';
-import { ArrowRight, Layers, Cpu, Minimize2 } from 'lucide-react';
+
+function OptimizationStats({ metrics }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem', margin: '0.75rem 0', fontSize: '0.82rem' }}>
+      <span>Pre-optimization: <strong>{metrics.nodesBefore} nodes</strong></span>
+      <span>Post-optimization: <strong>{metrics.nodesAfter} nodes</strong></span>
+      <span className="badge badge-cyan">
+        {metrics.nodeReduction} nodes eliminated ({metrics.percentReduction}% reduction)
+      </span>
+    </div>
+  );
+}
 
 export default function IrViewer({ ir }) {
   if (!ir) {
@@ -10,63 +21,51 @@ export default function IrViewer({ ir }) {
     );
   }
 
+  const { forward, combined } = ir;
+  const unchanged = ir.before === ir.after;
+
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Top Telemetry Header */}
-      <div
-        style={{
-          padding: '0.75rem 1.25rem',
-          background: '#0f1420',
-          borderBottom: '1px solid #2a354c',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>PRE-OPT NODES:</span>
-            <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#f1f5f9' }}>{ir.nodesBefore}</span>
+    <div className="overview-container" style={{ flex: 1, minHeight: 0 }}>
+      <section aria-label="Forward Computation Optimization" style={{ flexShrink: 0 }}>
+        <h3>Forward Computation Optimization</h3>
+        <OptimizationStats metrics={forward} />
+        {unchanged && (
+          <p style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
+            {combined.nodeReduction > 0
+              ? 'No optimization changes were required for the forward computation. The measured reduction occurred in the derivative graphs.'
+              : 'No optimization changes were required for the forward computation or derivative graphs.'}
+          </p>
+        )}
+        <div className="diff-grid" style={{ padding: '1rem 0', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))' }}>
+          <div className="diff-col">
+            <div className="diff-header">
+              <span>Original Forward IR</span>
+              <span className="badge badge-amber">{forward.nodesBefore} nodes</span>
+            </div>
+            <div className="diff-body" style={{ maxHeight: '55vh' }}>
+              {ir.before || '# Empty graph'}
+            </div>
           </div>
-          <ArrowRight size={14} color="#64748b" />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>POST-OPT NODES:</span>
-            <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#38bdf8' }}>{ir.nodesAfter}</span>
-          </div>
-          <span className="badge badge-emerald">
-            {ir.nodeReduction} ELIMINATED (-{ir.percentReduction}%)
-          </span>
-        </div>
-
-        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-          Topological 3-address linear instructions
-        </span>
-      </div>
-
-      {/* Side-by-Side IR Code Blocks */}
-      <div className="diff-grid">
-        {/* Pre-Opt Column */}
-        <div className="diff-col">
-          <div className="diff-header">
-            <span>RAW FORWARD IR (PRE-OPTIMIZATION)</span>
-            <span className="badge badge-amber">{ir.nodesBefore} nodes</span>
-          </div>
-          <div className="diff-body">
-            {ir.before || '# Empty graph'}
+          <div className="diff-col">
+            <div className="diff-header">
+              <span>Optimized Forward IR</span>
+              <span className="badge badge-cyan">{forward.nodesAfter} nodes</span>
+            </div>
+            <div className="diff-body" style={{ maxHeight: '55vh' }}>
+              {ir.after || '# Empty graph'}
+            </div>
           </div>
         </div>
-
-        {/* Post-Opt Column */}
-        <div className="diff-col">
-          <div className="diff-header">
-            <span>OPTIMIZED IR (POST-FOLDING &amp; CSE)</span>
-            <span className="badge badge-cyan">{ir.nodesAfter} nodes</span>
-          </div>
-          <div className="diff-body">
-            {ir.after || '# Empty graph'}
-          </div>
-        </div>
-      </div>
+      </section>
+      <section aria-label="Combined Forward + Gradient Optimization" style={{ flexShrink: 0 }}>
+        <h3>Combined Forward + Gradient Optimization</h3>
+        <OptimizationStats metrics={combined} />
+        <p style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
+          These statistics include the forward computation and all automatic differentiation graphs.
+          Each unique reachable node is counted once, including computations shared across graphs.
+          The IR listings above show only the forward computation.
+        </p>
+      </section>
     </div>
   );
 }

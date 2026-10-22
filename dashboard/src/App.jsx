@@ -118,7 +118,7 @@ export default function App() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span className="badge badge-emerald">
                 <CheckCircle2 size={12} style={{ marginRight: '4px' }} />
-                IR NODES: {compileResult.ir.nodesBefore} &rarr; {compileResult.ir.nodesAfter}
+                COMBINED IR NODES: {compileResult.ir.nodesBefore} &rarr; {compileResult.ir.nodesAfter}
               </span>
               <span className="badge badge-cyan">
                 {compileResult.compileTimeMs} ms
@@ -198,7 +198,7 @@ export default function App() {
               onClick={() => setActiveTab('ir')}
             >
               <Cpu size={14} />
-              <span>IR Optimization ({compileResult?.ir?.nodesAfter || 0} nodes)</span>
+              <span>IR Optimization ({compileResult?.ir?.forward?.nodesAfter || 0} forward nodes)</span>
             </button>
 
             <button

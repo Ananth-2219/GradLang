@@ -67,7 +67,7 @@ class CompileResult:
     gradient_nodes_opt: Dict[str, Any]
     ir_after: str           # human-readable listing after optimisation
 
-    # Optimiser statistics
+    # Combined forward + gradient statistics (legacy public fields)
     nodes_before: int
     nodes_after: int
 
@@ -81,6 +81,26 @@ class CompileResult:
 
     # Parameter list in declaration order
     parameters: List[str]
+
+    @property
+    def forward_nodes_before(self) -> int:
+        """Reachable forward nodes, matching ir_before."""
+        return len(topological_sort([self.graph.output]))
+
+    @property
+    def forward_nodes_after(self) -> int:
+        """Reachable optimized forward nodes, matching ir_after."""
+        return len(topological_sort([self.output_opt]))
+
+    @property
+    def combined_nodes_before(self) -> int:
+        """Unique nodes across the forward and all raw derivative roots."""
+        return self.nodes_before
+
+    @property
+    def combined_nodes_after(self) -> int:
+        """Unique nodes across the forward and all optimized derivative roots."""
+        return self.nodes_after
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +159,7 @@ def compile_source(
     # Collect forward + all gradient roots so CSE can cross them
     gradient_nodes_raw = differentiate(graph)
 
-    # Node counts BEFORE optimisation (forward graph only)
+    # Count the union of reachable forward + gradient nodes, sharing included once.
     raw_roots_for_count = [graph.output] + list(gradient_nodes_raw.values())
     nodes_before = len(topological_sort(raw_roots_for_count))
 
@@ -375,7 +395,8 @@ def main_cli(argv=None):
         print("INTERMEDIATE REPRESENTATION (forward, after optimisation)")
         print(sep)
         print(result.ir_after)
-        print(f"  Nodes: {result.nodes_before} -> {result.nodes_after}")
+        print(f"  Forward nodes: {result.forward_nodes_before} -> {result.forward_nodes_after}")
+        print(f"  Combined forward + gradient nodes: {result.nodes_before} -> {result.nodes_after}")
 
         print(f"\n{sep}")
         print("GENERATED PYTHON CODE")

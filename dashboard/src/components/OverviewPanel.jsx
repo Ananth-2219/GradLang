@@ -11,6 +11,7 @@ export default function OverviewPanel({ data }) {
   }
 
   const ir = data.ir || {};
+  const combined = ir.combined || ir;
   const compileTimeMs = data.compileTimeMs || 0;
   const output = data.output !== undefined && data.output !== null ? data.output : data.execution?.output;
   const gradients = data.gradients || data.execution?.gradients || {};
@@ -41,12 +42,12 @@ export default function OverviewPanel({ data }) {
 
         {/* Node Count Reduction */}
         <div className="metric-card cyan">
-          <span className="metric-title">Optimization Efficiency</span>
+          <span className="metric-title">Combined Forward + Gradient Reduction</span>
           <span className="metric-value">
-            {ir.nodeReduction > 0 ? `-${ir.percentReduction}%` : '0%'}
+            {combined.percentReduction || 0}%
           </span>
           <span className="metric-sub">
-            {ir.nodesBefore || 0} IR nodes &rarr; {ir.nodesAfter || 0} nodes ({ir.nodeReduction || 0} eliminated)
+            {combined.nodesBefore || 0} unique nodes &rarr; {combined.nodesAfter || 0} nodes ({combined.nodeReduction || 0} eliminated)
           </span>
         </div>
 
@@ -127,26 +128,29 @@ export default function OverviewPanel({ data }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.75rem' }}>
           <TrendingDown size={16} style={{ color: '#38bdf8' }} />
           <h3 style={{ fontSize: '0.92rem', fontWeight: 600, color: '#f1f5f9' }}>
-            IR Graph Reductions (CSE &amp; Constant Folding)
+            Combined Forward + Gradient Optimization (CSE &amp; Constant Folding)
           </h3>
         </div>
         <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '1rem' }}>
           GradLang uses structural hash interning for Common Subexpression Elimination (CSE) across both forward
           and backward passes, and constant folds arithmetic expressions at compile time.
+          Counts include all derivative graphs, with each shared node counted once.
+          Forward computation: {ir.forward?.nodesBefore ?? '—'} &rarr; {ir.forward?.nodesAfter ?? '—'} nodes
+          ({ir.forward?.percentReduction ?? '—'}% reduction).
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
           <div style={{ background: '#161c2c', padding: '0.75rem 1rem', borderRadius: '6px' }}>
-            <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Raw IR Nodes</span>
-            <div style={{ fontSize: '1.4rem', fontWeight: 700, fontFamily: 'monospace', color: '#e2e8f0' }}>{ir.nodesBefore}</div>
+            <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Combined Pre-Opt Nodes</span>
+            <div style={{ fontSize: '1.4rem', fontWeight: 700, fontFamily: 'monospace', color: '#e2e8f0' }}>{combined.nodesBefore}</div>
           </div>
           <div style={{ background: '#161c2c', padding: '0.75rem 1rem', borderRadius: '6px' }}>
-            <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Optimized Nodes</span>
-            <div style={{ fontSize: '1.4rem', fontWeight: 700, fontFamily: 'monospace', color: '#38bdf8' }}>{ir.nodesAfter}</div>
+            <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Combined Post-Opt Nodes</span>
+            <div style={{ fontSize: '1.4rem', fontWeight: 700, fontFamily: 'monospace', color: '#38bdf8' }}>{combined.nodesAfter}</div>
           </div>
           <div style={{ background: '#161c2c', padding: '0.75rem 1rem', borderRadius: '6px' }}>
-            <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Nodes Eliminated</span>
-            <div style={{ fontSize: '1.4rem', fontWeight: 700, fontFamily: 'monospace', color: '#10b981' }}>{ir.nodeReduction}</div>
+            <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Combined Nodes Eliminated</span>
+            <div style={{ fontSize: '1.4rem', fontWeight: 700, fontFamily: 'monospace', color: '#10b981' }}>{combined.nodeReduction}</div>
           </div>
         </div>
       </div>

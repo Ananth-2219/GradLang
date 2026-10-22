@@ -136,7 +136,7 @@ export default function DagViewer({ dags, parameters = [] }) {
             onClick={() => { setActiveView('combined'); setSelectedNode(null); }}
           >
             <Layers size={13} style={{ marginRight: '4px', verticalAlign: 'middle' }} />
-            Combined (Forward + Derivatives)
+            Combined (Forward + Derivatives, Optimized)
           </button>
           <button
             className={`dag-btn ${activeView === 'forwardOpt' ? 'active' : ''}`}
@@ -156,13 +156,14 @@ export default function DagViewer({ dags, parameters = [] }) {
               className={`dag-btn ${activeView === `grad_${p}` ? 'active' : ''}`}
               onClick={() => { setActiveView(`grad_${p}`); setSelectedNode(null); }}
             >
-              d/d{p}
+              d/d{p} (Optimized)
             </button>
           ))}
         </div>
 
         {/* Legend */}
         <div className="dag-legend">
+          <span>{nodes.length} unique nodes in selected graph</span>
           <div className="legend-item">
             <span className="legend-dot var"></span>
             <span>Var</span>
@@ -181,7 +182,7 @@ export default function DagViewer({ dags, parameters = [] }) {
           </div>
           <div className="legend-item">
             <span className="legend-dot shared"></span>
-            <span>Shared (CSE / Fan-out)</span>
+            <span>Shared (Multiple Consumers)</span>
           </div>
         </div>
       </div>
