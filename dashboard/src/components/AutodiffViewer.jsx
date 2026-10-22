@@ -45,7 +45,7 @@ export default function AutodiffViewer({ autodiffSteps = [] }) {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div className="overview-container">
         {/* Step-by-step Reverse Propagation Trace */}
-        <div style={{ background: '#0f1420', border: '1px solid #2a354c', borderRadius: '8px', overflow: 'hidden' }}>
+        <div style={{ background: '#0f1420', border: '1px solid #2a354c', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}>
           <div
             style={{
               padding: '0.75rem 1rem',
@@ -67,36 +67,43 @@ export default function AutodiffViewer({ autodiffSteps = [] }) {
             </span>
           </div>
 
-          <table className="workbench-table">
-            <thead>
-              <tr>
-                <th style={{ width: '80px' }}>Step #</th>
-                <th style={{ width: '120px' }}>Target Node</th>
-                <th style={{ width: '100px' }}>Op</th>
-                <th style={{ width: '160px' }}>Rule Triggered</th>
-                <th>Mathematical Explanation / Adjoint Contribution</th>
-              </tr>
-            </thead>
-            <tbody>
-              {autodiffSteps.map((step, idx) => (
-                <tr key={idx}>
-                  <td style={{ color: '#64748b' }}>#{idx + 1}</td>
-                  <td style={{ color: '#38bdf8', fontWeight: 600 }}>{step.name}</td>
-                  <td>
-                    <span className="badge badge-purple">{step.op}</span>
-                  </td>
-                  <td>
-                    <span className="badge badge-amber">{step.ruleApplied}</span>
-                  </td>
-                  <td style={{ color: '#cbd5e1' }}>{step.explanation}</td>
+          <div
+            role="region"
+            aria-label="Reverse-mode adjoint accumulation trace"
+            tabIndex={0}
+            style={{ maxHeight: '60vh', overflow: 'auto' }}
+          >
+            <table className="workbench-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '80px' }}>Step #</th>
+                  <th style={{ width: '120px' }}>Target Node</th>
+                  <th style={{ width: '100px' }}>Op</th>
+                  <th style={{ width: '160px' }}>Rule Triggered</th>
+                  <th>Mathematical Explanation / Adjoint Contribution</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {autodiffSteps.map((step, idx) => (
+                  <tr key={idx}>
+                    <td style={{ color: '#64748b' }}>#{idx + 1}</td>
+                    <td style={{ color: '#38bdf8', fontWeight: 600 }}>{step.name}</td>
+                    <td>
+                      <span className="badge badge-purple">{step.op}</span>
+                    </td>
+                    <td>
+                      <span className="badge badge-amber">{step.ruleApplied}</span>
+                    </td>
+                    <td style={{ color: '#cbd5e1' }}>{step.explanation}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Compiler Elementary Rules Matrix */}
-        <div style={{ background: '#0f1420', border: '1px solid #2a354c', borderRadius: '8px', padding: '1.25rem' }}>
+        <div style={{ background: '#0f1420', border: '1px solid #2a354c', borderRadius: '8px', padding: '1.25rem', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
             <BookOpen size={16} style={{ color: '#38bdf8' }} />
             <h3 style={{ fontSize: '0.92rem', fontWeight: 600, color: '#f1f5f9' }}>
