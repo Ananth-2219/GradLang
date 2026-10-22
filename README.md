@@ -1,57 +1,114 @@
-# GradLang — Phases 1 and 2
+# GradLang — Phases 1, 2, and 3
 
-GradLang is a compiler-design lab project for a math-expression DSL. The planned
-compiler generates gradients through an explicit reverse-mode automatic
-differentiation pass. Phase 1 provides grammar, lexing, parsing, and AST
-construction. Phase 2 adds semantic checks, a shared computation DAG,
-hand-written reverse-mode differentiation, optimization, and scalar Python codegen.
+GradLang is a Compiler Design Laboratory project implementing a domain-specific language (DSL) for mathematical expressions.  The compiler performs lexical analysis, recursive-descent parsing, semantic analysis, IR construction, **reverse-mode automatic differentiation**, IR optimisation, and Python code generation.  Phase 3 adds a unified pipeline, a comprehensive test suite, a CLI entry point, and a final demonstration.
 
-## Files and execution
+---
+
+## Repository layout
 
 ```text
 GradLang/
 ├── gradlang/
-│   ├── __init__.py
-│   ├── lexer.py
-│   ├── parser.py
-│   ├── ast_nodes.py
-│   ├── symbol_table.py
-│   ├── semantic_analysis.py
-│   ├── ir_graph.py
-│   ├── autodiff.py
-│   ├── optimizer.py
-│   └── codegen.py
+│   ├── __init__.py          Package docstring
+│   ├── __main__.py          CLI entry point (python -m gradlang ...)
+│   ├── lexer.py             Tokeniser + layout rules
+│   ├── parser.py            Recursive-descent parser
+│   ├── ast_nodes.py         Eight AST dataclasses
+│   ├── symbol_table.py      Symbol table, shape inference, SemanticError
+│   ├── semantic_analysis.py Public semantic pass (analyze)
+│   ├── ir_graph.py          Identity-based DAG + GraphBuilder
+│   ├── autodiff.py          Reverse-mode differentiation pass
+│   ├── optimizer.py         Constant folding + structural CSE
+│   ├── codegen.py           Python code emission + load_functions
+│   └── compiler.py          [Phase 3] Unified pipeline + CompileResult + CLI
 ├── tests/
-│   ├── demo_phase1.py
-│   ├── test_phase1.py
-│   ├── demo_phase2.py
-│   └── test_phase2.py
+│   ├── demo_phase1.py       Phase 1 demo (parse + error)
+│   ├── test_phase1.py       Phase 1 unit tests (7 tests)
+│   ├── demo_phase2.py       Phase 2 demo (full pass + CSE + finite diff)
+│   ├── test_phase2.py       Phase 2 unit tests (6 tests)
+│   ├── demo_phase3.py       [Phase 3] Final review demo (11 steps)
+│   └── test_phase3.py       [Phase 3] Comprehensive tests (88 tests)
 └── README.md
 ```
 
-Use Python 3.8 or newer. No third-party dependencies are required.
+Python 3.8 or newer.  No third-party dependencies.
+
+---
+
+## Quick start
 
 ```sh
-python tests/demo_phase1.py
-python tests/demo_phase2.py
+# Run all tests (101 tests total)
 python -m unittest discover -s tests -v
+
+# Run only the new Phase 3 tests
+python -m unittest tests/test_phase3.py -v
+
+# Run the Phase 3 final demonstration
+python tests/demo_phase3.py           # brief
+python tests/demo_phase3.py --full    # show all IRs
+
+# Run the Phase 2 demo (unchanged from earlier phases)
+python tests/demo_phase2.py
+
+# CLI: compile and execute a .gl source file
+python -m gradlang my_program.gl x=2.0 w=0.5 b=1.0
+
+# CLI: verbose mode (tokens, AST, IR, generated code)
+python -m gradlang my_program.gl --verbose x=2.0 w=0.5 b=1.0
+
+# CLI: compile only, skip execution
+python -m gradlang my_program.gl --no-exec
 ```
 
-The demo parses this program, prints nested dataclass representations, and reports
-a deliberately malformed expression with its line and column:
+---
 
-```text
+## Compiler pipeline
+
+```
+Source text
+  |
+  v  tokenize()           lexer.py
+Tokens
+  |
+  v  Parser.parse()       parser.py
+AST (FunctionDef, ...)
+  |
+  v  analyze()            semantic_analysis.py / symbol_table.py
+Symbol table  {name: Symbol}
+  |
+  v  build_graph()        ir_graph.py
+Forward computation DAG (Node objects)
+  |
+  v  differentiate()      autodiff.py
+Gradient DAG  {param: Node}
+  |
+  v  optimize()           optimizer.py
+Optimised forward + gradient DAGs
+  |
+  v  generate_code()      codegen.py
+Python source strings (forward function + gradient function)
+  |
+  v  load_functions()     codegen.py
+Callable Python functions
+  |
+  v  fn(**inputs)
+Result + gradient dict
+```
+
+The Phase 3 entry point `compile_source(source, inputs)` runs the full pipeline and returns a `CompileResult` dataclass containing every artefact.
+
+---
+
+## Supported language syntax
+
+```
 fn loss(x, w, b):
     y = w * x + b
     return (y - 1) ^ 2
 ```
 
-## Formal grammar
-
-This EBNF describes the token stream. Quoted strings are terminals, `=` defines
-a production, `,` concatenates, `|` selects alternatives, `{ ... }` means zero or
-more repetitions, and `[ ... ]` means optional. A semicolon ends a production.
-`NEWLINE`, `INDENT`, `DEDENT`, and `EOF` are lexer-generated tokens.
+### EBNF grammar
 
 ```ebnf
 program        = function, { function }, EOF ;
@@ -72,172 +129,208 @@ primary        = NUMBER
 arguments      = expression, { ",", expression } ;
 ```
 
-Lexical productions use character terminals; `IDENT` excludes the exact reserved
-words `fn` and `return`:
+### Operator precedence (lowest to highest)
 
-```ebnf
-IDENT          = letter_or_underscore, { letter_or_underscore | digit } ;
-NUMBER         = (digits, [ ".", digits ] | ".", digits),
-                 [ ("e" | "E"), [ "+" | "-" ], digits ] ;
-digits         = digit, { digit } ;
-digit          = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
-```
-
-`letter_or_underscore` is an ASCII letter (`A`–`Z`, `a`–`z`) or `_`.
-Identifiers are case-sensitive. The lexer takes the longest identifier or number
-matching its lexical rule; keywords are classified after reading an identifier.
-Numbers include `12`, `1.25`, `.5`, and `2e-3`. A trailing decimal point (`1.`)
-is unsupported. A sign is an operator, except inside a numeric exponent.
-Integer literals become Python `int`; decimal/exponent literals become Python
-`float`, with ordinary floating-point rounding and range limits.
+| Level | Operators | Associativity |
+|-------|-----------|---------------|
+| 1     | `+`, `-`  | Left          |
+| 2     | `*`, `/`  | Left          |
+| 3     | unary `-` | Right         |
+| 4     | `^`       | Right         |
 
 ### Layout rules
 
-- Spaces separate tokens. Tabs are rejected, including on otherwise blank lines.
-- Blank or spaces-only lines produce no tokens and do not change indentation.
-- Every nonblank physical line produces `NEWLINE`, even without a final newline.
-- Leading spaces are compared with an indentation stack initially containing zero.
-  A larger count produces `INDENT`. A smaller count must match an earlier level
-  and produces the required `DEDENT` tokens. EOF closes remaining indentation.
-- Function headers are at column one. Body lines share one positive indentation
-  level. Four spaces are recommended; any consistent positive width is accepted.
-- CRLF and CR line endings are normalized to LF. Expressions and headers must
-  fit on one physical line; parentheses do not enable line continuation.
-- Positions are one-based character columns, including leading spaces. Illegal
-  characters and inconsistent indentation raise `LexerError`; malformed token
-  sequences raise `ParseError`. Both derive from `SyntaxError`.
+- Spaces only; tabs are rejected.
+- Blank lines are skipped.
+- Body lines must have one consistent positive indentation level.
+- `INDENT`/`DEDENT` tokens are generated automatically.
 
-## Grammar decisions and limits
+### Numeric literals
 
-1. A program is a nonempty list of functions. Each function accepts zero or more
-   named parameters, zero or more assignments, and exactly one final return.
-   This models a straight-line math function without control-flow analysis.
-2. `+` and `-` share precedence and associate left; `*` and `/` share higher
-   precedence and also associate left. Thus `a-b-c` means `(a-b)-c` and `a/b*c`
-   means `(a/b)*c`. Parser loops build these left subtrees explicitly.
-3. `^` means exponentiation, not XOR. It associates right, following mathematical
-   convention: `a^b^c` means `a^(b^c)`.
-4. Exponentiation binds above unary minus on its left: `-x^2` means `-(x^2)`.
-   The exponent accepts a unary expression, so `x^-2` means `x^(-2)`. Recursive
-   unary minus also accepts `--x`. Unary plus is outside this grammar.
-5. Parentheses override precedence. Named calls such as `f(x, g(y))` are primary
-   expressions and support zero or more arguments. Only identifiers can be
-   callees; chained calls and calls on arbitrary expressions are unsupported.
-6. Assignments are statements, not expressions. Only a single identifier may be
-   assigned. Trailing commas, bare expression statements, nested functions,
-   comments, strings, vector literals, indexing, and control flow are omitted.
-   Scalar/vector meaning belongs to later semantic work; Phase 1 names and calls
-   carry no type information.
-7. The grammar has no unresolved syntactic ambiguity. Precedence layers choose
-   operator grouping; one-token lookahead distinguishes a variable from a call.
-   Indentation delimits bodies. Assignment and return start with distinct tokens.
-8. Undefined names, duplicate parameters, reassignment, call arity, and invalid
-   mathematical operations are intentionally not checked. These are semantic
-   questions, not parsing errors.
+`12`, `1.25`, `.5`, `2e-3` are all valid.  A trailing decimal point (`1.`) is not supported.  Integer-valued literals produce `int`; any literal with `.` or `e/E` produces `float`.
 
-## Implementation walkthrough
+### Limitations
 
-`tokenize(source)` returns `Token(kind, value, line, column)` objects. It scans
-one line at a time, emits layout tokens, then recognizes numbers, names, and
-single-character punctuation. It appends one EOF token.
+- Function calls are parsed but rejected at the semantic pass — their derivative rules are not yet implemented.
+- Vector parameters can be annotated externally (`Symbol("vector", (3,))`) and pass semantic checks, but IR lowering and execution are scalar-only.
+- No control flow, comments, string literals, or multi-line expressions.
 
-`Parser(tokens).parse()` returns a list of `FunctionDef` nodes. Each parser method
-mirrors an EBNF production. `expect()` consumes a required token or reports the
-current token's position. Loops implement left associativity; recursion implements
-unary operators and right-associative powers.
+---
 
-`ast_nodes.py` contains the eight required data classes. A function stores its
-parameter names and ordered statements. Expressions store child expressions,
-operators, names, or numeric values. Parentheses affect tree shape and therefore
-need no separate AST node. The AST stores syntax only; no backward pass runs.
+## Module descriptions
 
-## Phase 2 pipeline and APIs
+### `lexer.py`
+`tokenize(source)` scans one line at a time, normalises line endings, rejects tabs, tracks indentation with a stack, and emits layout tokens (`INDENT`, `DEDENT`, `NEWLINE`, `EOF`) alongside numbers, identifiers, keywords, and single-character punctuation.
 
-The Phase 1 grammar remains unchanged. AST nodes now retain source line numbers;
-these metadata fields do not change structural equality in the Phase 1 tests.
-The restrictions above describe parsing; the additional semantic checks below
-apply when compiling a function through Phase 2.
+### `parser.py`
+`Parser(tokens).parse()` implements the EBNF grammar with one method per production.  Left-associativity is built by loops; right-associativity by recursion.  One-token lookahead distinguishes variables from calls.
 
-1. `build_symbol_table(function, parameter_types=None)` in `symbol_table.py`
-   maps names to `Symbol(kind, shape)`. It walks statements in order, rejects
-   duplicate parameters and uses before definition, and infers assignment shapes.
-2. `analyze(function, parameter_types=None)` in `semantic_analysis.py` is the
-   public semantic entrypoint. It shares the symbol-building walk so a later
-   assignment cannot accidentally authorize an earlier reference. Diagnostics
-   include the offending expression and its source line.
-3. `build_graph(function, parameter_types=None, share=True)` lowers checked AST
-   nodes to a DAG. Assignments update the name environment; earlier nodes keep
-   their original inputs. Unary minus lowers to `Sub(Const(0), operand)`.
-   `format_graph([root])` prints nodes in topological order.
-4. `differentiate(graph)` returns a dictionary mapping every original parameter
-   name to its derivative root. Unused parameters receive zero.
-5. `optimize(roots)` returns new roots after constant folding and structural CSE.
-   Passing forward and derivative roots together permits sharing across them.
-6. `generate_code(name, parameters, output, gradients)` returns forward and
-   gradient source strings. `load_functions(name, forward_source, gradient_source)`
-   executes those strings and returns both Python functions. Only execute trusted,
-   compiler-generated code. DSL names that are Python keywords are rejected.
+### `ast_nodes.py`
+Eight frozen dataclasses: `FunctionDef`, `Assign`, `Return`, `BinOp`, `UnaryOp`, `Num`, `Var`, `Call`.  The `line` field is metadata excluded from structural equality.
 
-`tests/demo_phase2.py` shows all passes in order and prints the generated code.
-For `x=2, w=0.5, b=1`, the forward result is `1` and the gradient dictionary is
-`{'x': 1, 'w': 4, 'b': 2}`. The demo independently checks `w` and `b` with central
-finite differences using epsilon `1e-6` and absolute tolerance `1e-5`.
+### `symbol_table.py`
+`build_symbol_table(function, parameter_types)` performs a single ordered walk: each assignment's RHS is checked before the target is inserted, so use-before-definition is caught correctly.  Shape inference applies scalar broadcast rules.
 
-### Shapes and supported operations
+### `semantic_analysis.py`
+`analyze(function, parameter_types)` is the public entry point; it delegates directly to `build_symbol_table`.
 
-Parameters default to `Symbol('scalar', ())`. Explicit metadata can be supplied
-as `{'x': Symbol('vector', (3,))}` without adding type syntax to the language.
-Shape inference accepts equal shapes or a scalar broadcast against another shape;
-unequal non-scalar shapes fail. All binary operators are elementwise for this
-shape policy. The current backend rejects vector lowering explicitly; numerical
-execution and differentiation are scalar-only. Function calls remain parseable
-but are rejected by Phase 2 until call semantics and derivative rules are defined.
+### `ir_graph.py`
+Frozen `Node(op, inputs, value)` objects form an identity-based DAG.  `GraphBuilder` optionally interns nodes by structural key (construction-time CSE).  `build_graph` lowers an AST to a `Graph(name, parameters, output)`.  Unary minus is lowered as `Sub(Const(0), operand)`.
 
-Scalar execution uses Python numeric behavior. Division requires a nonzero
-denominator. Differentiation assumes real inputs at differentiable points.
-Variable exponents require a positive base: their derivative needs `log(base)`.
-An internal `Log` node therefore extends the derivative IR; it is not a new DSL
-function. Constant powers use the ordinary power rule and avoid logarithms,
-including explicit handling of exponents zero and one. Other powers retain their
-ordinary real-domain restrictions. No domain-proof pass is implemented.
+### `autodiff.py`
+`differentiate(graph)` performs reverse accumulation in topological order.  Each operator's local gradient rule contributes `upstream * local_derivative` per input edge.  Repeated edges (e.g. `x*x`) accumulate with `Add`.  Unused parameters receive `Const(0)`.
 
-### Reverse-mode accumulation
-
-For each node `v`, its adjoint represents `d(output)/d(v)`. The output adjoint
-starts at one. Reverse topological order visits every consumer before its inputs.
-Each operator rule contributes `upstream * local_derivative` along each input
-edge. If an input already has an adjoint, the pass constructs an `Add` node to
-sum the new contribution with the previous one. It never overwrites a contribution.
-
-For `t=w*x; output=t+t`, the Add contributes one twice to the same `t` node.
-The accumulated adjoint of `t` is two before Mul is processed, so the parameter
-gradients are `2*x` and `2*w`. Repeated edges within one operator, such as `x*x`,
-also contribute separately. This implements the multivariate chain rule.
-
-The dispatch table in `autodiff.py` separates these local rules:
-
-| Operation | Contribution to left input | Contribution to right input |
-|---|---|---|
+| Rule | d/d(left) | d/d(right) |
+|------|-----------|------------|
 | `a+b` | `g` | `g` |
 | `a-b` | `g` | `-g` |
 | `a*b` | `g*b` | `g*a` |
-| `a/b` | `g/b` | `-g*a/(b*b)` |
-| `a^b` | `g*b*a^(b-1)` | `g*a^b*log(a)` for variable exponents |
+| `a/b` | `g/b` | `-g*a/b²` |
+| `a^n` (const n) | `g*n*a^(n-1)` | — |
+| `a^b` (var) | `g*b*a^(b-1)` | `g*a^b*log(a)` |
 
-Here `g` is the accumulated upstream adjoint. Constant inputs do not require
-gradient propagation. The pass constructs expressions rather than evaluating
-derivatives; optimization and code generation consume those expressions later.
+### `optimizer.py`
+`optimize(roots)` performs one forward topological pass.  Constant folding evaluates any operator whose inputs are all `Const` nodes, provided the result is a finite real.  Structural CSE merges duplicates via a shared `GraphBuilder`.
 
-### What CSE removes
+### `codegen.py`
+`generate_code` emits two Python `def` blocks, one for the forward function and one for the gradient function.  Each IR node becomes one assignment using a fresh temporary.  `load_functions` executes the generated source in an isolated namespace.
 
-For `return w*x + w*x`, construction with `share=False` produces five reachable
-nodes: two variables, two Mul nodes, and one Add. CSE identifies both Mul nodes
-by the same operator and canonical inputs. It merges them, producing **four**
-nodes, with both Add inputs pointing to the same Mul.
+### `compiler.py` *(Phase 3)*
+`compile_source(source, inputs, parameter_types)` is the single public entry point.  It runs the full pipeline and returns a `CompileResult` dataclass with fields for tokens, AST, symbols, both IRs, gradient nodes, node counts, generated source, and (when `inputs` is provided) numerical output and gradient values.  `main_cli` implements `python -m gradlang`.
 
-Normal construction uses structural hashing already and produces four nodes;
-running CSE then leaves four. The demo deliberately disables construction sharing
-to make the reduction visible. Counts include all nodes reachable from the output.
-Operand order matters: `w*x` and `x*w` are not merged by algebraic reasoning.
-Constant folding can expose further duplicates; tests cover this case too.
-Invalid constant operations are retained so optimization preserves runtime errors.
+---
+
+## CompileResult fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `source` | `str` | Original source text |
+| `tokens` | `list[Token]` | Lexer output |
+| `ast` | `FunctionDef` | Parsed AST of first function |
+| `symbols` | `dict` | Symbol table `{name: Symbol}` |
+| `graph` | `Graph` | Forward DAG before optimisation |
+| `ir_before` | `str` | Human-readable forward IR before opt |
+| `gradient_nodes` | `dict` | Raw gradient roots per parameter |
+| `output_opt` | `Node` | Optimised forward output node |
+| `gradient_nodes_opt` | `dict` | Optimised gradient roots |
+| `ir_after` | `str` | Human-readable forward IR after opt |
+| `nodes_before` | `int` | Reachable nodes (fwd+grad) before opt |
+| `nodes_after` | `int` | Reachable nodes (fwd+grad) after opt |
+| `forward_source` | `str` | Generated Python forward function |
+| `gradient_source` | `str` | Generated Python gradient function |
+| `output` | `float\|None` | Forward value (None if not executed) |
+| `gradients` | `dict\|None` | Gradient values (None if not executed) |
+| `parameters` | `list[str]` | Parameters in declaration order |
+
+---
+
+## Installation
+
+```sh
+git clone https://github.com/Ananth-2219/GradLang.git
+cd GradLang
+python -m unittest discover -s tests -v   # verify 101 tests pass
+```
+
+No `pip install` or virtual environment is required.  Standard library only.
+
+---
+
+## Testing
+
+```sh
+# All three phases (101 tests)
+python -m unittest discover -s tests -v
+
+# Individual phases
+python -m unittest tests/test_phase1.py -v   # 7 tests
+python -m unittest tests/test_phase2.py -v   # 6 tests
+python -m unittest tests/test_phase3.py -v   # 88 tests
+```
+
+The Phase 3 suite covers:
+
+- **Valid programs**: constants, single/multiple variables, all operators, nested parentheses, precedence and associativity, float literals, assignments, reassignment, repeated subexpressions, zero-parameter functions.
+- **Invalid programs**: illegal characters, tabs, missing returns/colons, unmatched parentheses, trailing commas, duplicate parameters, undefined identifiers, use-before-definition, inconsistent indentation, function calls, incompatible vector shapes, Python-keyword function names, division by zero, log of negative base.
+- **Autodiff**: all six operator rules, chain rule, shared computation nodes, repeated variable usage, multiple inputs, zero/unused gradients, power with zero/one/constant/variable exponent, gradient through assignments.
+- **Finite-difference validation**: every operator at generic non-degenerate inputs; tolerance `1e-5`.
+- **Optimiser**: constant folding (chain, power), CSE, invalid-constant preservation, default sharing equivalence, node count invariants.
+- **CompileResult**: field presence, types, values, no-exec mode.
+- **Regressions**: Phase 1 and Phase 2 test equivalents embedded.
+
+---
+
+## Sample input and output
+
+**Source file** (`loss.gl`):
+```
+fn loss(x, w, b):
+    y = w * x + b
+    return (y - 1) ^ 2
+```
+
+**Command**:
+```sh
+python -m gradlang loss.gl x=2.0 w=0.5 b=1.0
+```
+
+**Output**:
+```
+forward(x=2.0, w=0.5, b=1.0) = 1.0
+gradients = {'x': 1.0, 'w': 4.0, 'b': 2.0}
+```
+
+**Analytical check**: `(w*x+b-1)^2` at `x=2, w=0.5, b=1` gives `(0.5*2+1-1)^2 = 1`.  Gradients: `d/dx = 2*(w*x+b-1)*w = 2*1*0.5 = 1`, `d/dw = 2*(w*x+b-1)*x = 2*1*2 = 4`, `d/db = 2*(w*x+b-1) = 2`.
+
+---
+
+## Known limitations
+
+1. **Function calls** are parsed but rejected at semantic analysis.  Their differentiation rules have not been implemented.
+2. **Vector execution** is not supported.  Vector-annotated parameters pass semantic checks but the IR builder raises `ValueError` before generating code.
+3. **No domain-validity pass**.  The compiler does not statically ensure that, for example, `x > 0` when computing `x^y` with variable `y` (which requires `log(x)`).  Runtime errors or domain errors surface at execution time.
+4. **No type syntax**.  All variables default to scalar.  Vector annotations must be supplied programmatically via `parameter_types`.
+5. **Single expression per return**.  No multi-statement returns, tuple returns, or control flow.
+6. **Scalar output only**.  The function must return a single scalar value.
+
+---
+
+## Formal grammar (unchanged from Phase 1)
+
+See the EBNF section above.  The Phase 1 grammar is fully preserved in Phase 3.
+
+---
+
+## Reverse-mode differentiation
+
+For each node `v`, its adjoint represents `d(output)/d(v)`.  Starting from the output (adjoint = 1), nodes are visited in reverse topological order.  Each operator rule propagates `upstream * local_derivative` to each input.  If a node already has a partial adjoint, the new contribution is added via an `Add` node.  Parameters without any path to the output receive `Const(0)`.
+
+Example — `t = w*x; output = t + t`:
+- `Add` contributes `g=1` to `t` twice.
+- Accumulated adjoint of `t` is `1 + 1 = 2`.
+- `Mul` propagates `2*x` to `w` and `2*w` to `x`.
+
+---
+
+## Optimisation details
+
+`optimize(roots)` rebuilds all reachable nodes in one topological pass:
+
+- **Constant folding**: if all inputs to an operator are `Const` and the result is a finite real number, the node is replaced by a single `Const`.  Division-by-zero and `log` of zero are detected and left unfollowed so they surface at runtime.
+- **Common subexpression elimination (CSE)**: the shared `GraphBuilder` interns nodes by `(op, inputs-tuple, type(value), value)`.  Any two nodes with identical structure and identical inputs (by identity) map to one node.  Folding constants first may expose additional duplicates.
+
+Counts for `loss(x,w,b) = (w*x+b-1)^2`:
+
+| | Nodes (fwd + grad) |
+|-|---|
+| Before optimisation | 16 |
+| After optimisation  | 14 |
+
+---
+
+## References
+
+- Griewank, A. & Walther, A. (2008). *Evaluating Derivatives*, SIAM.
+- Aho, A. V., Lam, M. S., Sethi, R., & Ullman, J. D. (2006). *Compilers: Principles, Techniques, and Tools*, 2nd ed., Addison-Wesley.
+- Python Software Foundation. (2024). *Python Language Reference*, 3.12.
+- Nocedal, J. & Wright, S. J. (2006). *Numerical Optimization*, 2nd ed., Springer.

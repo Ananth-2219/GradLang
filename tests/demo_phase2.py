@@ -18,7 +18,7 @@ SAMPLE = """fn loss(x, w, b):
     y = w * x + b
     return (y - 1) ^ 2
 """
-
+3
 
 def compile_source(source):
     """Keep each compiler pass visible rather than hiding the pipeline."""
