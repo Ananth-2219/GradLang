@@ -328,9 +328,42 @@ Counts for `loss(x,w,b) = (w*x+b-1)^2`:
 
 ---
 
+## Compiler Visualization Dashboard
+
+GradLang includes a professional, interactive Compiler Visualization Workbench designed for live demonstration and review. It connects a React + Vite frontend directly to the Python compiler pipeline via a lightweight FastAPI backend.
+
+### Features
+1. **GradLang Code Editor**: Syntax-highlighted code editor with pre-loaded DSL examples and dynamic parameter inputs.
+2. **Interactive DAG Visualization**: Powered by ReactFlow with automatic hierarchical layouts. Highlights shared computation nodes (CSE) across both forward and derivative passes. Supports view filtering for combined, forward-only, and individual parameter gradients.
+3. **Telemetry & Results**: Displays forward output $f(x)$ and reverse-mode analytical gradients $\nabla f$ with microsecond compilation latency metrics.
+4. **Intermediate Representation (IR)**: Side-by-side comparison of 3-address codes before and after optimization with real node reduction counts.
+5. **Autodiff Adjoints Trace**: Step-by-step table tracing reverse-mode adjoint accumulation and rules applied.
+6. **Finite-Difference Validation**: Central finite-difference verification comparing numerical vs analytical gradients with absolute and relative errors.
+7. **Live Test Suite & Micro-Benchmarks**: Programmatic pytest execution and phase-by-phase compiler latency breakdown (Lexer, Parser, Semantic Analysis, IR Graph, Autodiff, Optimizer, Codegen, Evaluation).
+
+### Startup Instructions
+
+#### Step 1: Start the FastAPI Backend
+```bash
+# In project root: c:\GradLang
+python -m uvicorn api.main:app --port 8001 --host 127.0.0.1
+```
+The API starts at `http://127.0.0.1:8001` (with documentation at `http://127.0.0.1:8001/docs`).
+
+#### Step 2: Start the Vite Frontend
+```bash
+# In dashboard directory: c:\GradLang\dashboard
+npm install
+npm run dev
+```
+Open your browser to `http://localhost:5173`. The Vite development server automatically proxies API requests to `http://127.0.0.1:8001`.
+
+---
+
 ## References
 
 - Griewank, A. & Walther, A. (2008). *Evaluating Derivatives*, SIAM.
 - Aho, A. V., Lam, M. S., Sethi, R., & Ullman, J. D. (2006). *Compilers: Principles, Techniques, and Tools*, 2nd ed., Addison-Wesley.
 - Python Software Foundation. (2024). *Python Language Reference*, 3.12.
 - Nocedal, J. & Wright, S. J. (2006). *Numerical Optimization*, 2nd ed., Springer.
+
