@@ -10,9 +10,17 @@ export default function OverviewPanel({ data }) {
     );
   }
 
-  const { ir, execution, compileTimeMs, parameters } = data;
-  const output = execution?.output;
-  const gradients = execution?.gradients || {};
+  const ir = data.ir || {};
+  const compileTimeMs = data.compileTimeMs || 0;
+  const output = data.output !== undefined && data.output !== null ? data.output : data.execution?.output;
+  const gradients = data.gradients || data.execution?.gradients || {};
+  const symbolicGradients = data.symbolicGradients || {};
+  const gradientNodeCounts = data.gradientNodeCounts || {};
+
+  // Safely determine parameter list: parameters array or gradient keys
+  const paramList = (data.parameters && data.parameters.length > 0)
+    ? data.parameters
+    : Object.keys(gradients);
 
   return (
     <div className="overview-container">
@@ -24,7 +32,11 @@ export default function OverviewPanel({ data }) {
           <span className="metric-value">
             {output !== null && output !== undefined ? Number(output).toFixed(6) : 'N/A'}
           </span>
-          <span className="metric-sub">Computed by generated forward Python code</span>
+          <span className="metric-sub">
+            {output !== null && output !== undefined
+              ? `Exact value: ${String(output)}`
+              : 'Computed by generated forward Python code'}
+          </span>
         </div>
 
         {/* Node Count Reduction */}
@@ -34,7 +46,7 @@ export default function OverviewPanel({ data }) {
             {ir.nodeReduction > 0 ? `-${ir.percentReduction}%` : '0%'}
           </span>
           <span className="metric-sub">
-            {ir.nodesBefore} IR nodes &rarr; {ir.nodesAfter} nodes ({ir.nodeReduction} eliminated)
+            {ir.nodesBefore || 0} IR nodes &rarr; {ir.nodesAfter || 0} nodes ({ir.nodeReduction || 0} eliminated)
           </span>
         </div>
 
@@ -70,22 +82,43 @@ export default function OverviewPanel({ data }) {
           </span>
         </div>
 
-        {parameters && parameters.length > 0 ? (
+        {paramList.length > 0 ? (
           <div className="gradients-grid">
-            {parameters.map((param) => {
+            {paramList.map((param) => {
               const val = gradients[param];
+              const count = gradientNodeCounts[param];
+              const hasVal = val !== undefined && val !== null;
               return (
                 <div key={param} className="gradient-card">
-                  <span className="grad-label">&part;f / &part;{param}</span>
-                  <span className="grad-value">
-                    {val !== undefined && val !== null ? Number(val).toFixed(6) : 'N/A'}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span className="grad-label">&part;f / &part;{param}</span>
+                    {count !== undefined && (
+                      <span style={{ fontSize: '0.68rem', color: '#64748b', fontFamily: 'monospace' }}>
+                        {count} nodes
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
+                    <span className="grad-value" style={{ color: hasVal ? '#34d399' : '#f59e0b' }}>
+                      {hasVal ? Number(val).toFixed(6) : 'N/A'}
+                    </span>
+                    {hasVal && (
+                      <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontFamily: 'monospace' }}>
+                        ({String(val)})
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', borderTop: '1px solid #1e2638', paddingTop: '4px', marginTop: '4px' }}>
+                    {hasVal ? 'Evaluated numerical gradient' : 'Awaiting numerical execution'}
+                  </div>
                 </div>
               );
             })}
           </div>
         ) : (
-          <div style={{ color: '#64748b', fontSize: '0.8rem' }}>No parameter gradients available.</div>
+          <div style={{ color: '#94a3b8', fontSize: '0.8rem', padding: '0.75rem 0', fontStyle: 'italic' }}>
+            No parameters declared in function signature.
+          </div>
         )}
       </div>
 

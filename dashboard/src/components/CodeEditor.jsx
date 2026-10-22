@@ -1,36 +1,85 @@
 import React, { useEffect, useState } from 'react';
 import { Play, Code2, Sliders, Sparkles } from 'lucide-react';
 
+function extractParams(src) {
+  if (!src) return [];
+  const match = src.match(/fn\s+[A-Za-z_][A-Za-z0-9_]*\s*\(([^)]*)\)/);
+  if (!match) return [];
+  return match[1]
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => Boolean(s) && /^[A-Za-z_][A-Za-z0-9_]*$/.test(s));
+}
+
 export default function CodeEditor({
   source,
   setSource,
   inputs,
   setInputs,
   parameters,
+  setParameters,
   onCompile,
   examples = [],
   loading = false,
 }) {
   const [selectedExampleId, setSelectedExampleId] = useState('');
 
-  // When an example is chosen, update source and default inputs
+  // When an example is chosen, update source, parameters, and default inputs
   const handleSelectExample = (e) => {
     const id = e.target.value;
     setSelectedExampleId(id);
     const ex = examples.find((item) => item.id === id);
     if (ex) {
       setSource(ex.source);
+      const parsedParams = extractParams(ex.source);
+      if (parsedParams.length > 0 && setParameters) {
+        setParameters(parsedParams);
+      }
       if (ex.inputs) {
         setInputs(ex.inputs);
+        if (onCompile) {
+          onCompile(ex.inputs, ex.source);
+        }
       }
+    }
+  };
+
+  const handleSourceChange = (newSrc) => {
+    setSource(newSrc);
+    const parsedParams = extractParams(newSrc);
+    if (parsedParams.length > 0) {
+      if (setParameters) setParameters(parsedParams);
+      setInputs((prev) => {
+        const next = {};
+        parsedParams.forEach((p) => {
+          next[p] = prev[p] !== undefined && prev[p] !== '' ? prev[p] : 1.0;
+        });
+        return next;
+      });
     }
   };
 
   const handleInputChange = (param, val) => {
     setInputs((prev) => ({
       ...prev,
-      [param]: val === '' ? '' : parseFloat(val),
+      [param]: val === '' ? '' : (isNaN(parseFloat(val)) ? 0 : parseFloat(val)),
     }));
+  };
+
+  const handleCompileClick = () => {
+    const activeParams = parameters && parameters.length > 0 ? parameters : extractParams(source);
+    const resolvedInputs = {};
+    activeParams.forEach((p) => {
+      const raw = inputs[p];
+      if (raw !== undefined && raw !== '' && !isNaN(Number(raw))) {
+        resolvedInputs[p] = Number(raw);
+      } else {
+        resolvedInputs[p] = 1.0;
+      }
+    });
+    if (onCompile) {
+      onCompile(resolvedInputs, source);
+    }
   };
 
   // Keyboard shortcut Ctrl+Enter / Cmd+Enter to compile
@@ -38,12 +87,14 @@ export default function CodeEditor({
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        onCompile();
+        handleCompileClick();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onCompile]);
+  }, [onCompile, inputs, source, parameters]);
+
+  const activeParams = parameters && parameters.length > 0 ? parameters : extractParams(source);
 
   return (
     <aside className="workbench-sidebar">
@@ -92,7 +143,7 @@ export default function CodeEditor({
         <textarea
           className="code-textarea"
           value={source}
-          onChange={(e) => setSource(e.target.value)}
+          onChange={(e) => handleSourceChange(e.target.value)}
           placeholder="fn f(x):&#10;    return x ^ 2"
           spellCheck="false"
         />
@@ -106,13 +157,13 @@ export default function CodeEditor({
             <span>FUNCTION INPUTS</span>
           </div>
           <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
-            {parameters.length > 0 ? `${parameters.length} parameter(s)` : 'Awaiting compilation'}
+            {activeParams.length > 0 ? `${activeParams.length} parameter(s)` : 'Awaiting parameters'}
           </span>
         </div>
 
-        {parameters.length > 0 ? (
+        {activeParams.length > 0 ? (
           <div className="params-grid">
-            {parameters.map((param) => (
+            {activeParams.map((param) => (
               <div key={param} className="param-field">
                 <label>{param} =</label>
                 <input
@@ -121,14 +172,14 @@ export default function CodeEditor({
                   className="param-input"
                   value={inputs[param] !== undefined ? inputs[param] : ''}
                   onChange={(e) => handleInputChange(param, e.target.value)}
-                  placeholder="0.0"
+                  placeholder="1.0"
                 />
               </div>
             ))}
           </div>
         ) : (
           <div style={{ fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic' }}>
-            Parameters detected automatically after compilation.
+            Parameters detected automatically from function header.
           </div>
         )}
       </div>
@@ -137,7 +188,7 @@ export default function CodeEditor({
       <div className="compile-bar">
         <button
           className="btn-compile"
-          onClick={onCompile}
+          onClick={handleCompileClick}
           disabled={loading}
         >
           <Play size={15} fill="#fff" />

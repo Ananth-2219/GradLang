@@ -60,38 +60,43 @@ export default function App() {
   }, []);
 
   // Main Compile & Run action
-  const handleCompile = useCallback(async (customEps = epsilon) => {
-    setLoading(true);
-    setCompileError(null);
-    try {
-      const res = await compileCode(source, inputs, true, customEps);
-      if (res.success) {
-        setCompileResult(res);
-        setCompileError(null);
-        if (res.parameters) {
-          setParameters(res.parameters);
-          // Preserve input values for matching parameters, or default to 1.0
-          setInputs((prev) => {
-            const next = {};
-            res.parameters.forEach((p) => {
-              next[p] = prev[p] !== undefined ? prev[p] : 1.0;
+  const handleCompile = useCallback(
+    async (customEps = epsilon, overrideInputs = null, overrideSource = null) => {
+      setLoading(true);
+      setCompileError(null);
+      const srcToUse = overrideSource !== null ? overrideSource : source;
+      const inputsToUse = overrideInputs !== null ? overrideInputs : inputs;
+      try {
+        const res = await compileCode(srcToUse, inputsToUse, true, customEps);
+        if (res.success) {
+          setCompileResult(res);
+          setCompileError(null);
+          if (res.parameters) {
+            setParameters(res.parameters);
+            setInputs((prev) => {
+              const base = inputsToUse || prev || {};
+              const next = {};
+              res.parameters.forEach((p) => {
+                next[p] = base[p] !== undefined && base[p] !== '' ? base[p] : 1.0;
+              });
+              return next;
             });
-            return next;
-          });
+          }
+        } else {
+          setCompileError(res);
         }
-      } else {
-        setCompileError(res);
+      } catch (err) {
+        setCompileError({
+          errorType: 'Network/Server Error',
+          message: err.message,
+          phase: 'API',
+        });
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setCompileError({
-        errorType: 'Network/Server Error',
-        message: err.message,
-        phase: 'API',
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [source, inputs, epsilon]);
+    },
+    [source, inputs, epsilon]
+  );
 
   // Initial compilation on page load
   useEffect(() => {
@@ -138,7 +143,8 @@ export default function App() {
           inputs={inputs}
           setInputs={setInputs}
           parameters={parameters}
-          onCompile={() => handleCompile(epsilon)}
+          setParameters={setParameters}
+          onCompile={(explicitInputs, explicitSrc) => handleCompile(epsilon, explicitInputs, explicitSrc)}
           examples={examples}
           loading={loading}
         />

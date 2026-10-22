@@ -62,7 +62,7 @@ app.add_middleware(
 
 class CompileRequest(BaseModel):
     source: str
-    inputs: Optional[Dict[str, float]] = None
+    inputs: Optional[Dict[str, Any]] = None
     validate_gradients: bool = True
     epsilon: float = 1e-6
 
@@ -398,8 +398,37 @@ def compile_code(req: CompileRequest):
         raise HTTPException(status_code=400, detail={"errorType": "EmptySource", "message": "Source code cannot be empty"})
 
     t0 = time.perf_counter()
+
+    # Pre-parse inputs if provided (convert numeric strings, filter invalid)
+    prepared_inputs: Optional[Dict[str, float]] = None
+    if req.inputs is not None:
+        clean = {}
+        for k, v in req.inputs.items():
+            if v is not None and v != "":
+                try:
+                    clean[str(k)] = float(v)
+                except (ValueError, TypeError):
+                    pass
+        prepared_inputs = clean
+
     try:
-        result = compile_source(source, inputs=req.inputs)
+        # Reconcile inputs with declared function parameters
+        preview_tokens = tokenize(source)
+        preview_funcs = Parser(preview_tokens).parse()
+        if preview_funcs:
+            func_params = list(preview_funcs[0].params)
+            if prepared_inputs is not None:
+                # Keep only declared parameters
+                prepared_inputs = {k: v for k, v in prepared_inputs.items() if k in func_params}
+                # For any parameter not yet supplied, default to 1.0 so execution evaluates
+                for p in func_params:
+                    if p not in prepared_inputs:
+                        prepared_inputs[p] = 1.0
+            else:
+                # When inputs was omitted, evaluate with default 1.0 so gradients are available
+                prepared_inputs = {p: 1.0 for p in func_params}
+
+        result = compile_source(source, inputs=prepared_inputs)
     except LexerError as exc:
         msg = str(exc)
         line, col = _extract_line_col(msg)
@@ -496,19 +525,24 @@ def compile_code(req: CompileRequest):
 
     # 4. Individual derivative DAGs (optimized)
     derivatives_opt_dag = {}
+    symbolic_gradients = {}
+    gradient_node_counts = {}
     for param in result.parameters:
-        root_node = result.gradient_nodes_opt[param]
-        derivatives_opt_dag[param] = serialize_dag(
-            [root_node],
-            root_labels={root_node: f"d/d{param}"}
-        )
+        if param in result.gradient_nodes_opt:
+            root_node = result.gradient_nodes_opt[param]
+            derivatives_opt_dag[param] = serialize_dag(
+                [root_node],
+                root_labels={root_node: f"d/d{param}"}
+            )
+            symbolic_gradients[param] = format_graph([root_node])
+            gradient_node_counts[param] = len(topological_sort([root_node]))
 
     # Autodiff steps trace
     autodiff_steps = trace_autodiff(result.graph)
 
     # Finite difference validation
     finite_diff_results = None
-    if req.validate_gradients and req.inputs and result.gradients is not None:
+    if req.validate_gradients and prepared_inputs and result.gradients is not None:
         try:
             forward_fn, _ = load_functions(
                 result.graph.name,
@@ -517,7 +551,7 @@ def compile_code(req: CompileRequest):
             )
             finite_diff_results = compute_finite_differences(
                 forward_fn,
-                req.inputs,
+                prepared_inputs,
                 result.gradients,
                 epsilon=req.epsilon
             )
@@ -534,6 +568,10 @@ def compile_code(req: CompileRequest):
     return {
         "success": True,
         "parameters": result.parameters,
+        "output": result.output,
+        "gradients": result.gradients,
+        "symbolicGradients": symbolic_gradients,
+        "gradientNodeCounts": gradient_node_counts,
         "tokens": serialized_tokens,
         "ast": serialized_ast,
         "symbols": serialized_symbols,
@@ -559,7 +597,7 @@ def compile_code(req: CompileRequest):
         "execution": {
             "output": result.output,
             "gradients": result.gradients,
-            "inputs": req.inputs,
+            "inputs": prepared_inputs,
             "finiteDifferences": finite_diff_results,
         },
         "compileTimeMs": round(total_time_ms, 3),
