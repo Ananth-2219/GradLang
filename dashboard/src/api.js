@@ -16,10 +16,11 @@ export async function fetchExamples() {
   return res.json();
 }
 
-export async function compileCode(source, inputs = null, validateGradients = true, epsilon = 1e-6) {
+export async function compileCode(source, inputs = null, validateGradients = true, epsilon = 1e-6, signal = null) {
   const res = await fetch(`${API_BASE}/compile`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal,
     body: JSON.stringify({
       source,
       inputs,

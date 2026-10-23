@@ -336,7 +336,7 @@ GradLang includes a professional, interactive Compiler Visualization Workbench d
 
 ### Features
 1. **GradLang Code Editor**: Syntax-highlighted code editor with pre-loaded DSL examples and dynamic parameter inputs.
-2. **Interactive DAG Visualization**: Powered by ReactFlow with automatic hierarchical layouts. Highlights shared computation nodes (CSE) across both forward and derivative passes. Supports view filtering for combined, forward-only, and individual parameter gradients.
+2. **Interactive DAG Visualization**: Powered by ReactFlow with automatic hierarchical layouts. Shows evaluated values inside each node and highlights values reused by multiple input edges across forward and derivative passes. Supports combined, forward-only, and individual parameter gradient views.
 3. **Telemetry & Results**: Displays forward output $f(x)$ and reverse-mode analytical gradients $\nabla f$ with microsecond compilation latency metrics.
 4. **Intermediate Representation (IR)**: Side-by-side forward IR listings with matching forward-only counts, plus separate combined forward + gradient optimization statistics.
 5. **Autodiff Adjoints Trace**: Step-by-step table tracing reverse-mode adjoint accumulation and rules applied.
@@ -357,6 +357,31 @@ For the linear loss example, the forward IR stays at 9 → 9 nodes (0% reduction
 while the combined graphs improve from 16 → 14 (2 nodes eliminated, 12.5%). This
 reduction occurs in the derivative computations even though the forward listings
 are identical. Counts are calculated from each compiled program.
+
+### DAG node values
+
+Open **Interactive DAG**, then choose a forward or derivative view. Every node shows
+its evaluated numerical value directly inside the node; derivative roots explicitly
+show the final gradient. The graph uses the full available width, with no explanation
+panel or click-to-explain behavior. Unused parameters correctly show a zero gradient.
+
+**SHARED ×N** means N input-edge uses in the selected graph, including repeated
+inputs of one operation such as `x * x`. It describes reuse, not an assertion that
+N nodes were eliminated. A computation may also serve multiple output/gradient
+roots; all root roles are retained even when they refer to the same node.
+
+While this tab is open, program and input edits automatically recompile after a
+400ms pause. Superseded previews are cancelled and node values refresh in place.
+Invalid edits explicitly label the last successful evaluation. Other
+tabs retain the existing **Compile & Run Pipeline** workflow.
+
+The API retains each node's original `value` metadata and adds `evaluatedValue`,
+`inputValues`, `calculation`, `explanation`, `sharedExplanation`, and `rootNames`.
+Each derivative DAG also includes `gradientExplanation` with numerical chain-rule
+steps. Evaluation reads the actual IR and uses the compiler's existing operation
+implementations; the explanatory trace invokes its existing autodiff rules without
+altering compilation or optimization. Display text uses six significant digits;
+numeric API values retain their precision.
 
 ### Startup Instructions
 

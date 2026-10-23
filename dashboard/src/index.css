@@ -497,12 +497,15 @@ html, body, #root {
   justify-content: space-between;
   gap: 1rem;
   z-index: 10;
+  flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .dag-selector {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  flex-wrap: wrap;
 }
 
 .dag-btn {
@@ -534,6 +537,7 @@ html, body, #root {
   gap: 0.75rem;
   font-size: 0.75rem;
   color: var(--text-muted);
+  flex-wrap: wrap;
 }
 
 .legend-item {
@@ -562,7 +566,8 @@ html, body, #root {
   background: var(--bg-tertiary);
   border: 1.5px solid var(--border-default);
   color: var(--text-primary);
-  min-width: 110px;
+  width: 210px;
+  height: 76px;
   box-shadow: var(--shadow-sm);
   transition: all 0.2s ease;
   cursor: pointer;
@@ -596,20 +601,38 @@ html, body, #root {
   box-shadow: 0 0 14px rgba(245, 158, 11, 0.4) !important;
   position: relative;
 }
-.custom-dag-node.node-shared::after {
-  content: 'SHARED';
-  position: absolute;
-  top: -8px;
-  right: -6px;
-  background: #f59e0b;
-  color: #000;
-  font-size: 0.6rem;
-  font-weight: 800;
-  padding: 0.05rem 0.3rem;
-  border-radius: 3px;
-  letter-spacing: 0.5px;
+.dag-node-value, .dag-node-root {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
 }
-
+.dag-node-value {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.dag-node-root {
+  color: var(--accent-emerald);
+  font-weight: 600;
+}
+.dag-evaluation-status {
+  padding: 0.5rem 1rem;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  border-bottom: 1px solid var(--border-default);
+}
+.dag-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.dag-canvas {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
 /* ==========================================================================
    Tables & Data Views
    ========================================================================== */

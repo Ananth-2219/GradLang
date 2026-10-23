@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Layers,
   Terminal,
@@ -43,6 +43,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [epsilon, setEpsilon] = useState('1e-6');
+  const latestCompile = useRef(0);
 
   // Load curated examples on mount
   useEffect(() => {
@@ -61,13 +62,15 @@ export default function App() {
 
   // Main Compile & Run action
   const handleCompile = useCallback(
-    async (customEps = epsilon, overrideInputs = null, overrideSource = null) => {
+    async (customEps = epsilon, overrideInputs = null, overrideSource = null, signal = null) => {
+      const requestId = ++latestCompile.current;
       setLoading(true);
       setCompileError(null);
       const srcToUse = overrideSource !== null ? overrideSource : source;
       const inputsToUse = overrideInputs !== null ? overrideInputs : inputs;
       try {
-        const res = await compileCode(srcToUse, inputsToUse, true, customEps);
+        const res = await compileCode(srcToUse, inputsToUse, true, customEps, signal);
+        if (signal?.aborted || requestId !== latestCompile.current) return;
         if (res.success) {
           setCompileResult(res);
           setCompileError(null);
@@ -79,20 +82,22 @@ export default function App() {
               res.parameters.forEach((p) => {
                 next[p] = base[p] !== undefined && base[p] !== '' ? base[p] : 1.0;
               });
-              return next;
+              return Object.keys(prev).length === Object.keys(next).length
+                && Object.keys(next).every((p) => prev[p] === next[p]) ? prev : next;
             });
           }
         } else {
           setCompileError(res);
         }
       } catch (err) {
+        if (signal?.aborted || requestId !== latestCompile.current) return;
         setCompileError({
           errorType: 'Network/Server Error',
           message: err.message,
           phase: 'API',
         });
       } finally {
-        setLoading(false);
+        if (requestId === latestCompile.current) setLoading(false);
       }
     },
     [source, inputs, epsilon]
@@ -102,6 +107,17 @@ export default function App() {
   useEffect(() => {
     handleCompile();
   }, []);
+
+  // Recompile edits in the educational DAG view; cancel superseded previews.
+  useEffect(() => {
+    if (activeTab !== 'dag') return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => handleCompile(undefined, null, null, controller.signal), 400);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeTab, handleCompile]);
 
   return (
     <div className="workbench-app">
@@ -247,6 +263,9 @@ export default function App() {
               <DagViewer
                 dags={compileResult?.dags}
                 parameters={compileResult?.parameters || parameters}
+                evaluatedInputs={compileResult?.execution?.inputs}
+                loading={loading}
+                error={compileError}
               />
             )}
 

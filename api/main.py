@@ -33,6 +33,7 @@ from gradlang.ir_graph import (
 from gradlang.autodiff import differentiate, RULES
 from gradlang.optimizer import optimize
 from gradlang.codegen import generate_code, load_functions
+from .dag_education import describe_node, evaluate_nodes, explain_gradients
 
 app = FastAPI(
     title="GradLang Compiler Workbench API",
@@ -168,10 +169,13 @@ def serialize_ast(node: Any) -> Dict[str, Any]:
 
 def serialize_dag(
     roots: List[Node],
-    root_labels: Optional[Dict[Node, str]] = None
+    root_labels: Optional[Dict[Node, Any]] = None,
+    inputs: Optional[Dict[str, float]] = None,
+    evaluated_values: Optional[Dict[Node, float]] = None,
 ) -> Dict[str, Any]:
     """Convert a set of DAG roots into a directed graph for visualization."""
     nodes = topological_sort(roots)
+    values = evaluate_nodes(roots, inputs, evaluated_values) if inputs is not None else None
     node_to_id = {node: f"node_{i}" for i, node in enumerate(nodes)}
     
     # Calculate consumer counts (out-degree in data-flow)
@@ -188,6 +192,7 @@ def serialize_dag(
         node_id = node_to_id[node]
         is_root = root_labels is not None and node in root_labels
         root_name = root_labels[node] if is_root else None
+        root_names = root_name if isinstance(root_name, list) else ([root_name] if is_root else [])
         
         # Display label
         if node.op == "Var":
@@ -214,7 +219,18 @@ def serialize_dag(
             "consumerCount": consumer_counts[node],
             "isShared": consumer_counts[node] > 1,
             "isRoot": is_root,
-            "rootName": root_name,
+            "rootName": ", ".join(root_names) if root_names else None,
+            "rootNames": root_names,
+            "sharedExplanation": (
+                f"This value has {consumer_counts[node]} input uses in this graph, "
+                "possibly repeated inputs of the same operation. It is computed once and reused "
+                "instead of duplicating its computation. This is reuse, not proof of an eliminated node."
+                if consumer_counts[node] > 1 else "This value has at most one input use in this graph."
+            ),
+            **(describe_node(node, values) if values is not None else {
+                "evaluatedValue": None, "inputValues": [], "calculation": None,
+                "explanation": "Supply numerical inputs to evaluate this node.",
+            }),
         })
 
     edges = []
@@ -513,26 +529,34 @@ def compile_code(req: CompileRequest):
     }
 
     # Build DAG representations
+    evaluated_values = evaluate_nodes(
+        [result.graph.output, result.output_opt, *result.gradient_nodes_opt.values()],
+        prepared_inputs,
+    )
+    gradient_guides = explain_gradients(result.graph, prepared_inputs)
     # 1. Forward raw DAG
     fwd_raw_dag = serialize_dag(
         [result.graph.output],
-        root_labels={result.graph.output: f"{result.graph.name} (output)"}
+        root_labels={result.graph.output: f"{result.graph.name} (output)"},
+        inputs=prepared_inputs, evaluated_values=evaluated_values,
     )
 
     # 2. Forward optimized DAG
     fwd_opt_dag = serialize_dag(
         [result.output_opt],
-        root_labels={result.output_opt: f"{result.graph.name} (opt)"}
+        root_labels={result.output_opt: f"{result.graph.name} (opt)"},
+        inputs=prepared_inputs, evaluated_values=evaluated_values,
     )
 
     # 3. Combined forward + gradients (shows shared nodes across both passes!)
     combined_roots = [result.output_opt] + [
         result.gradient_nodes_opt[p] for p in result.parameters
     ]
-    combined_labels = {result.output_opt: "Forward Output"}
+    combined_labels = {result.output_opt: ["Forward Output"]}
     for p in result.parameters:
-        combined_labels[result.gradient_nodes_opt[p]] = f"d/d{p}"
-    combined_dag = serialize_dag(combined_roots, root_labels=combined_labels)
+        combined_labels.setdefault(result.gradient_nodes_opt[p], []).append(f"d/d{p}")
+    combined_dag = serialize_dag(combined_roots, root_labels=combined_labels,
+                                 inputs=prepared_inputs, evaluated_values=evaluated_values)
 
     # 4. Individual derivative DAGs (optimized)
     derivatives_opt_dag = {}
@@ -543,8 +567,10 @@ def compile_code(req: CompileRequest):
             root_node = result.gradient_nodes_opt[param]
             derivatives_opt_dag[param] = serialize_dag(
                 [root_node],
-                root_labels={root_node: f"d/d{param}"}
+                root_labels={root_node: f"d/d{param}"},
+                inputs=prepared_inputs, evaluated_values=evaluated_values,
             )
+            derivatives_opt_dag[param]["gradientExplanation"] = gradient_guides[param]
             symbolic_gradients[param] = format_graph([root_node])
             gradient_node_counts[param] = len(topological_sort([root_node]))
 
